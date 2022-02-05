@@ -16,12 +16,10 @@ function App() {
   const [lamportClock, setLamportClock] = useState<number>(0)
   const [listOfConnections, setListOfConnections] = useState<Peer.DataConnection[]>([])
   const peerInstance = useRef<Peer>()
-  const connectionInstance = useRef<Peer.DataConnection>()
   var connectionId = ''
   var chatMessage = ''
 
   useEffect(() => {
-    console.log(connectionInstance.current)
     function randId(): string {
       let roomLength = 6
       let lowChar = "A".charCodeAt(0)
@@ -65,16 +63,16 @@ function App() {
   
   function onSubmitConnectionRequest() {
     setLamportClock(lamportClock + 1)
-    connectionInstance.current = peerInstance.current?.connect(connectionId);
-    connectionInstance?.current?.on('open', function () {
+    var connection = peerInstance.current?.connect(connectionId);
+    connection?.on('open', function () {
       setStateText("successfully connected to: " + connectionId)
       var message: PeerMessage = { senderId: id, lamportClock: lamportClock, message: `${id} has entered the chat`, chatLog: chatLog }
       setChatLog([...chatLog, generateChatString(message)])
-      if(connectionInstance.current !== undefined){
-      setListOfConnections([...listOfConnections, connectionInstance.current])
+      if(connection !== undefined){
+      setListOfConnections([...listOfConnections, connection])
       }
-      connectionInstance?.current?.send(message);
-      connectionId = ' ';
+      connection?.send(message);
+      connectionId = '';
     });
   }
 
@@ -114,7 +112,7 @@ function App() {
           return <p key={index}>{message}</p>
         })}
       </div>
-      {connectionInstance.current == undefined ?
+      {listOfConnections.length == 0 ?
         <p>not connected</p> :
         <div>
           <label>
