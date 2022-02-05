@@ -6,8 +6,6 @@ type PeerMessage = {
   senderId: string
   lamportClock: number
   message: string
-  chatLog: string[]
-  connectionList?: string[]
 };
 
 function App() {
@@ -16,8 +14,7 @@ function App() {
   const [chatLog, setChatLog] = useState<string[]>([''])
   const [lamportClock, setLamportClock] = useState<number>(0)
   const [listOfConnections, setListOfConnections] = useState<Peer.DataConnection[]>([])
-  const [listOfConnectionIds, setListOfConnectionIds] = useState<string[]>([])
-  const peerInstance = useRef<Peer>()
+  const [peer, setPeer] = useState<Peer | undefined>(undefined)
   var inputBoxConnectionId = ''
   var inputBoxChatMessage = ''
 
@@ -33,7 +30,6 @@ function App() {
       }
       return [...new Array(roomLength).keys()].map(randChar).join("");
     }
-
     var myId: string = randId();
     var peer = new Peer(myId, {
       host: '45.79.192.219',
@@ -41,36 +37,46 @@ function App() {
       path: '/myapp'
     });
 
-    peer.on('open', function (id) {
-      console.log("connection successful, your id: " + id)
-      setLocalClientId(id)
-    });
-
-    peer.on('connection', function (conn) {
-      conn.on('data', function (data: PeerMessage) {
-        setLamportClock(lamportClock > data.lamportClock ? lamportClock + 1 : data.lamportClock + 1);
-        setChatLog([...data.chatLog, generateChatString(data)])
-        console.log(data.chatLog)
-        if (data.connectionList) {
-          setListOfConnectionIds([...data.connectionList])
-        }
-        createConnectionToId(data.senderId)
-      });
-    });
-
-    peerInstance.current = peer;
+    setPeer(peer)
   }, []);
 
+  useEffect(() => {
+    console.log('chat changed')
+    if (peer) {
+      peer.on('open', function (id) {
+        console.log('My peer ID is:' + id);
+        setLocalClientId(id)
+      });
+
+      peer.on('connection', function (conn) {
+        conn.on('data', function (data: PeerMessage) {
+          setLamportClock(lamportClock > data.lamportClock ? lamportClock + 1 : data.lamportClock + 1); //make lamport larger
+          setChatLog(currentChatLog => ([...currentChatLog, parseMessage(data)]))
+          if (listOfConnections.find(connection => connection.peer === data.senderId)){
+            console.log('connection already exists')
+          }
+          else {
+            createConnectionToId(data.senderId)
+            console.log(listOfConnections)
+          }
+        });
+      });
+    }
+  }, [peer, listOfConnections]);
+
+  /*
   useEffect(() => {
     listOfConnectionIds.forEach(connectionId => {
       //check if we have a connection to this id
       if (listOfConnections.find(connection => connection.peer === connectionId) === undefined) {
         //if we don't, we create one
-        createConnectionToId(connectionId)
+        if (connectionId !== localClientId) {
+          createConnectionToId(connectionId)
+        }
       }
     });
   }, [listOfConnectionIds]);
-
+ */
   function onConnectionIdChange(e: React.ChangeEvent<HTMLInputElement>) {
     inputBoxConnectionId = e.target.value
   }
@@ -83,20 +89,17 @@ function App() {
   }
 
   function createConnectionToId(id: string) {
-    const newLamportClock = lamportClock + 1
-    setLamportClock(newLamportClock)
-    var connection = peerInstance.current?.connect(id);
+    setLamportClock(currentLamportClock => (currentLamportClock + 1))
+    var connection = peer?.connect(id);
     connection?.on('open', function () {
       //update connection data
-      if (connection !== undefined) setListOfConnections([...listOfConnections, connection])
-      setListOfConnectionIds([...listOfConnectionIds, id])
+      if (connection) setListOfConnections(currentConnectionList => ([...currentConnectionList, connection as Peer.DataConnection]))
+      
       setnotificationBarText("successfully connected to: " + id)
-
       //create and send message
-      var message: PeerMessage = { senderId: localClientId, lamportClock: newLamportClock, message: `${localClientId} has entered the chat`, chatLog: chatLog, connectionList: listOfConnectionIds }
-      setChatLog([...chatLog, generateChatString(message)])
+      var message: PeerMessage = { senderId: localClientId, lamportClock: lamportClock, message: `${localClientId} has entered the chat` }
+      setChatLog(currentChatLog => ([...currentChatLog, parseMessage(message)]))
       connection?.send(message);
-      inputBoxConnectionId = '';
     })
   }
 
@@ -104,14 +107,14 @@ function App() {
   function onSubmitChat() {
     const newLamportClock = lamportClock + 1
     setLamportClock(newLamportClock)
-    var message: PeerMessage = { senderId: localClientId, lamportClock: newLamportClock, message: inputBoxChatMessage, chatLog: chatLog, connectionList: undefined }
-    setChatLog([...chatLog, generateChatString(message)])
+    var message: PeerMessage = { senderId: localClientId, lamportClock: newLamportClock, message: inputBoxChatMessage }
+    setChatLog([...chatLog, parseMessage(message)])
     for (let i = 0; i < listOfConnections.length; i++) {
       listOfConnections[i].send(message);
     }
   }
 
-  function generateChatString(message: PeerMessage) {
+  function parseMessage(message: PeerMessage) {
     return `${message.senderId} at L(${message.lamportClock}): ${message.message}`
   }
 
