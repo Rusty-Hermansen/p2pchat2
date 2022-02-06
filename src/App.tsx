@@ -6,7 +6,7 @@ import { connect } from 'http2';
 type PeerMessage = {
   id: number
   lamportClock: number
-  originatorLamport?: number
+  originatorLamport: number
   message: string
 };
 function randId(): string {
@@ -31,6 +31,14 @@ function App() {
   const [lamportClock, setLamportClock] = useState<number>(0)
   const [receivedMessageIds, setReceivedMessageIds] = useState<number[]>([])
   const [listOfConnections, setListOfConnections] = useState<Peer.DataConnection[]>([])
+  const receivedMessagesRef = useRef<number[]>(receivedMessageIds)
+  const connectionsRef = useRef<Peer.DataConnection[]>(listOfConnections)
+  const lamportClockRef = useRef<number>(lamportClock)
+
+  connectionsRef.current = listOfConnections
+  receivedMessagesRef.current = receivedMessageIds
+  lamportClockRef.current = lamportClock
+
 
   var inputBoxConnectionId = ''
   var inputBoxChatMessage = ''
@@ -38,35 +46,29 @@ function App() {
   useEffect(() => {
     peer.on('connection', function (conn) {
       conn.on('data', function (data: PeerMessage) {
+        console.log(chatLog)
         //check in incoming connection is not already in list
-        if (listOfConnections.findIndex(x => x.peer === conn.peer) === -1) {
-          
+        if (connectionsRef.current.findIndex(x => x.peer === conn.peer) === -1) {
           var connection = peer.connect(conn.peer)
           setListOfConnections(currentListOfConnections => ([...currentListOfConnections,connection]))
         }
-        setLamportClock(lamportClock > data.lamportClock ? lamportClock + 1 : data.lamportClock + 1);
+        var currentLamport = lamportClockRef.current > data.lamportClock ? lamportClockRef.current + 1 : data.lamportClock + 1
+        setLamportClock(currentLamportClock => (currentLamport));
         //check if message is already received
-        if (receivedMessageIds.findIndex(x => x === data.id) === -1) {
+        if (receivedMessagesRef.current.findIndex(x => x === data.id) === -1) {
           setReceivedMessageIds(currentReceivedMessageIds => ([...currentReceivedMessageIds, data.id]))
           setChatLog(currentChatLog => ([...currentChatLog, parseMessage(data)]))
-          const broadcastedMessage: PeerMessage= {id: data.id, lamportClock: lamportClock, originatorLamport: data.lamportClock, message: data.message}
-          console.log("broadcasted message variable: " + broadcastedMessage.originatorLamport);
+          const broadcastedMessage: PeerMessage= {id: data.id, lamportClock: currentLamport, originatorLamport: data.originatorLamport, message: data.message}
           //broadcast message to all connections
-          listOfConnections.forEach(x => x.send(broadcastedMessage))
+          connectionsRef.current.forEach(x => x.send(broadcastedMessage))
         }
       });
     });
   }, []);
+  
 
   function parseMessage(message: PeerMessage) {
-    console.log("Does it have originator attached "+ message.originatorLamport)
-    if(message.originatorLamport === undefined || message.originatorLamport === null) {
-       return ` L(${message.lamportClock}): ${message.message}`
-    }
-    else {
       return ` OL(${message.originatorLamport}) L(${message.lamportClock}): ${message.message}`
-    }
-   
   }
 
   function onConnectionIdChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -83,8 +85,9 @@ function App() {
     onAddNewConnection(inputBoxConnectionId)
   }
   function onSubmitChat() {
-    setLamportClock(currentLamportClock => (currentLamportClock + 1))
-    var message: PeerMessage = {id: Math.floor(Math.random()*1000000), lamportClock: lamportClock, originatorLamport: undefined, message: inputBoxChatMessage }
+    var currentLamport = lamportClock+1 
+    setLamportClock(currentLamportClock => (currentLamport))
+    var message: PeerMessage = {id: Math.floor(Math.random()*1000000), lamportClock: currentLamport, originatorLamport: currentLamport, message: inputBoxChatMessage }
     setChatLog([...chatLog, parseMessage(message)])
     listOfConnections.forEach(connection => {
       console.log(connection.peer)
